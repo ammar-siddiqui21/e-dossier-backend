@@ -14,7 +14,6 @@ function convertBase64ToJson() {
 const firebaseConfig = convertBase64ToJson();
 
 if(!admin.apps.length) {
-    console.log(firebaseConfig);
     admin.initializeApp({
         credential: admin.credential.cert({
             projectId: firebaseConfig.project_id,
