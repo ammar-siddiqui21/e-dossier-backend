@@ -1,4 +1,5 @@
 import express from "express";
+import cors from "cors";
 import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
 import bodyParser from "body-parser";
@@ -11,6 +12,12 @@ const app = express();
 
 app.use(bodyParser.json());
 app.use(cookieParser());
+app.use(cors({
+  origin: [process?.env?.DEPLOYED_ORIGIN || "", process?.env?.LOCAL_DEV_ORIGIN || ""],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+}));
 
 app.use("/api/v1", router, commonRouter);
 app.use("/api/v1/data-entry", dataEntryRouter);
