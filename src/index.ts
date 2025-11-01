@@ -13,7 +13,7 @@ const app = express();
 app.use(bodyParser.json());
 app.use(cookieParser());
 app.use(cors({
-  origin: [process?.env?.DEPLOYED_ORIGIN || "", process?.env?.LOCAL_DEV_ORIGIN || ""],
+  origin: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
@@ -21,6 +21,12 @@ app.use(cors({
 
 app.use("/api/v1", router, commonRouter);
 app.use("/api/v1/data-entry", dataEntryRouter);
+
+app.use((req, res, next) => {
+  console.log('Request sent from origin', req.headers?.origin);
+  console.log("Configuration provided by .env are", process?.env?.DEPLOYED_ORIGIN, process?.env?.LOCAL_DEV_ORIGIN)
+  next();
+})
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
