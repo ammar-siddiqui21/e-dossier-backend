@@ -307,4 +307,19 @@ router.post("/class/:classId/officers", async (req : Request, res : Response) =>
     }
 });
 
+// ADD A CLASS
+router.post("/class", async (req : Request, res : Response) => {
+    const { name } = req.body;
+    if (!name) {
+        return res.status(400).json({ error: "Missing class name" });
+    }
+    try {
+        const classRef = await firestore.collection("class").add({ name });
+        res.status(201).json({ id: classRef.id, message: "Class added successfully" });
+    } catch (error) {
+        console.error("Error adding class:", error);
+        res.status(500).json({ error: "Failed to add class" });
+    }
+});
+
 export { router as dataEntryRouter };
