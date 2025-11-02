@@ -54,4 +54,26 @@ router.get("/officer/:officerId/classes", async (req, res) => {
     }
 });
 
+// GET ALL CLASSES
+router.get("/classes", async (req, res) => {
+    try {
+        const snapshot = await firestore.collection("class").get();
+        // get number of students in each class
+        const classIds = snapshot.docs.map(doc => doc.id);
+        const enrollmentPromises = classIds.map(classId =>
+            enrollmentCollection.where("classId", "==", classId).get()
+        );
+        const enrollmentSnapshots = await Promise.all(enrollmentPromises);
+        const classes = snapshot.docs.map((doc, index) => ({
+            id: doc.id,
+            ...doc.data(),
+            numberOfStudents: enrollmentSnapshots[index].size
+        }));
+        res.status(200).json(classes);
+    } catch (error) {
+        console.error("Error fetching classes:", error);
+        res.status(500).json({ error: "Failed to fetch classes" });
+    }
+});
+
 export { router as commonRouter };
