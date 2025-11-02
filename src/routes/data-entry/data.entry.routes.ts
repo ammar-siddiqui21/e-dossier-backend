@@ -48,6 +48,20 @@ router.post("/officer", async (req : Request, res : Response) => {
     }
 });
 
+// UPDATE OFFICER DATA
+router.put("/officer/:id", async (req : Request, res : Response) => {
+    const { id } = req.params;
+    const updatedData : Partial<Officer> = req.body;
+    try {
+        const officerRef = officerCollection.doc(id);
+        await officerRef.update(updatedData);
+        res.status(200).json({ message: "Officer data updated successfully" });
+    } catch (error) {
+        console.error("Error updating officer data:", error);
+        res.status(500).json({ error: "Failed to update officer data" });
+    }
+});
+
 //UPDATE MARKS OF ONE OFFICER
 router.put('/officer/marks/:id', async (req : Request, res : Response) => {
   try {
