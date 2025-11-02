@@ -71,6 +71,8 @@ router.post("/login", async (req: Request, res: Response) => {
     });
 
     res.json({
+      role: user?.role,
+      id: user?.id || '',
       accessToken,
       expiresIn: "1h",
       message: "Login successful",
