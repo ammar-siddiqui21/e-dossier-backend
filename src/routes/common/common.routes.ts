@@ -76,4 +76,16 @@ router.get("/classes", async (req, res) => {
     }
 });
 
+// GET ALL INSTRUCTORS
+router.get("/instructors", async (req, res) => {
+    try {
+        const snapshot = await firestore.collection("instructor").get();
+        const instructors = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        res.status(200).json(instructors);
+    } catch (error) {
+        console.error("Error fetching instructors:", error);
+        res.status(500).json({ error: "Failed to fetch instructors" });
+    }
+});
+
 export { router as commonRouter };
