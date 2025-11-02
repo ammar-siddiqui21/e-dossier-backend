@@ -309,12 +309,12 @@ router.post("/class/:classId/officers", async (req : Request, res : Response) =>
 
 // ADD A CLASS
 router.post("/class", async (req : Request, res : Response) => {
-    const { name } = req.body;
-    if (!name) {
-        return res.status(400).json({ error: "Missing class name" });
+    const { name, instructorId } = req.body;
+    if (!name || !instructorId) {
+        return res.status(400).json({ error: "Missing class name or instructor ID" });
     }
     try {
-        const classRef = await firestore.collection("class").add({ name });
+        const classRef = await firestore.collection("class").add({ name, instructorId });
         res.status(201).json({ id: classRef.id, message: "Class added successfully" });
     } catch (error) {
         console.error("Error adding class:", error);
