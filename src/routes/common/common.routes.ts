@@ -76,6 +76,21 @@ router.get("/classes", async (req, res) => {
     }
 });
 
+// GET CLASS BY ID
+router.get("/class/:classId", async (req, res) => {
+    const { classId } = req.params;
+    try {
+        const classDoc = await firestore.collection("class").doc(classId).get();
+        if (!classDoc.exists) {
+            return res.status(404).json({ error: "Class not found" });
+        }
+        res.status(200).json({ id: classDoc.id, ...classDoc.data() });
+    } catch (error) {
+        console.error("Error fetching class:", error);
+        res.status(500).json({ error: "Failed to fetch class" });
+    }
+});
+
 // GET ALL INSTRUCTORS
 router.get("/instructors", async (req, res) => {
     try {
