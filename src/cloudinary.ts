@@ -10,6 +10,13 @@ cloudinaryRef.config({
         api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
+console.log("Cloudinary configured with following config", {
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET
+});
+
+
 
 export const uploadImageToCloudinary = async (fileBuffer: Buffer, id: string) => {
     return new Promise((resolve, reject) => {
