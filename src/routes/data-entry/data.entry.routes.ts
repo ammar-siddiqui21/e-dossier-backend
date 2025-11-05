@@ -322,4 +322,31 @@ router.post("/class", async (req : Request, res : Response) => {
     }
 });
 
+// UPDATE A CLASS
+router.put("/class/:id", async (req : Request, res : Response) => {
+    const { id } = req.params;
+    const updatedData = req.body;
+    try {
+        const classRef = firestore.collection("class").doc(id);
+        await classRef.update(updatedData);
+        res.status(200).json({ message: "Class updated successfully" });
+    } catch (error) {
+        console.error("Error updating class:", error);
+        res.status(500).json({ error: "Failed to update class" });
+    }
+});
+
+// DELETE A CLASS
+router.delete("/class/:id", async (req : Request, res : Response) => {
+    const { id } = req.params;
+    try {
+        const classRef = firestore.collection("class").doc(id);
+        await classRef.delete();
+        res.status(200).json({ message: "Class deleted successfully" });
+    } catch (error) {
+        console.error("Error deleting class:", error);
+        res.status(500).json({ error: "Failed to delete class" });
+    }
+});
+
 export { router as dataEntryRouter };
