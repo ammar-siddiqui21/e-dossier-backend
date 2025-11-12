@@ -183,12 +183,12 @@ router.get("/officer", async (req : Request, res : Response) => {
 
 // ADD A COURSE
 router.post("/course", async (req : Request, res : Response) => {
-    const { courseName, type } = req.body;
-    if (!courseName || !type) {
-        return res.status(400).json({ error: "Missing courseName or type" });
+    const { courseName, type, category } = req.body;
+    if (!courseName || !type || !category) {
+        return res.status(400).json({ error: "Missing courseName, type or category" });
     }
     try {
-        const courseRef = await firestore.collection("courses").add({ courseName, type });
+        const courseRef = await firestore.collection("courses").add({ courseName, type, category });
         res.status(201).json({ id: courseRef.id, message: "Course added successfully" });
     } catch (error) {
         console.error("Error adding course:", error);
@@ -346,6 +346,252 @@ router.delete("/class/:id", async (req : Request, res : Response) => {
     } catch (error) {
         console.error("Error deleting class:", error);
         res.status(500).json({ error: "Failed to delete class" });
+    }
+});
+
+// ADD A ASSESSMENT
+router.post("/assessment/:courseId", async (req: Request, res: Response) => {
+    const { courseId } = req.params;
+    const { name, totalMarks } = req.body;
+    if (!courseId || !name || !totalMarks) {
+        return res.status(400).json({ error: "Missing courseId, name or totalMarks" });
+    }
+    try {
+        const assessmentRef = await firestore.collection("assessments").add({
+            courseId,
+            assessmentName: name,
+            totalMarks
+        });
+        res.status(201).json({ id: assessmentRef.id, message: "Assessment added successfully" });
+    } catch (error) {
+        console.error("Error adding assessment:", error);
+        res.status(500).json({ error: "Failed to add assessment" });
+    }
+});
+
+// GET ALL ASSESSMENTS BY COURSE ID
+router.get("/assessment/:courseId", async (req: Request, res: Response) => {
+    const { courseId } = req.params;
+    if (!courseId) {
+        return res.status(400).json({ error: "Missing courseId in parameter" });
+    }
+    try {
+        const snapshot = await firestore.collection("assessments").where("courseId", "==", courseId).get();
+        const assessments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        res.status(200).json(assessments);
+    } catch (error) {
+        console.error("Error fetching assessments:", error);
+        res.status(500).json({ error: "Failed to fetch assessments" });
+    }
+});
+
+// GET MARKS OF ALL OFFICERS FOR A SPECIFIC ASSESSMENT
+router.get("/assessment/:assessmentId/marks", async (req: Request, res: Response) => {
+    const { assessmentId } = req.params;
+    if (!assessmentId) {
+        return res.status(400).json({ error: "Missing assessmentId in parameter" });
+    }
+    try {
+        const snapshot = await firestore.collection("marks").where("assessmentId", "==", assessmentId).get();
+        const marks = snapshot.docs.map(doc => ({ marksId: doc.id, ...doc.data() }));
+        res.status(200).json(marks);
+    } catch (error) {
+        console.error("Error fetching marks:", error);
+        res.status(500).json({ error: "Failed to fetch marks" });
+    }
+});
+
+// UPDATE MARKS FOR ONE OFFICER BY MARKS ID
+router.put("/marks/:marksId/:assessmentId", async (req: Request, res: Response) => {
+    const { marksId, assessmentId } = req.params;
+    const { updatedMarks } = req.body;
+    if (!marksId || !updatedMarks) {
+        return res.status(400).json({ error: "Missing marksId or updatedMarks in parameter" });
+    }
+    if(!assessmentId) {
+        return res.status(400).json({ error: "Missing assessmentId in parameter" });
+    }
+    try {
+        const assessmentRef = firestore.collection("assessments").doc(assessmentId);
+        const assessmentDoc = await assessmentRef.get();
+        if (!assessmentDoc.exists) {
+            return res.status(404).json({ error: "Assessment not found" });
+        }
+        const marksRef = firestore.collection("marks").doc(marksId);
+        if (!marksRef) {
+            return res.status(404).json({ error: "Marks record not found" });
+        }
+        // Check that new marks should be less than total marks
+        const assessmentData = assessmentDoc.data();
+        if (updatedMarks > assessmentData?.totalMarks) {
+            return res.status(400).json({ error: "Updated marks exceed total marks for the assessment" });
+        }
+        await marksRef.update({ marks: updatedMarks });
+        res.status(200).json({ message: "Marks updated successfully" });
+    } catch (error) {
+        console.error("Error updating marks:", error);
+        res.status(500).json({ error: "Failed to update marks" });
+    }
+});
+
+// UPDATE MARKS FOR MULTIPLE OFFICERS BY ASSESSMENT ID
+router.put("/marks/update-all", async (req: Request, res: Response) => {
+    const marksUpdates = req.body;
+    // body = [{marksId: string, marks: number}]
+    if (!Array.isArray(marksUpdates)) {
+        return res.status(400).json({ error: "Invalid request" });
+    }
+    try {
+        const batch = firestore.batch();
+        marksUpdates.forEach(async ({ marksId, marks }) => {
+            const marksRef = firestore.collection("marks").doc(marksId);
+            batch.update(marksRef, { marks });
+        });
+        await batch.commit();
+        res.status(200).json({ message: "Marks updated successfully for all officers" });
+    } catch (error) {
+        console.error("Error updating marks for all officers:", error);
+        res.status(500).json({ error: "Failed to update marks for all officers" });
+    }
+});
+
+// ADD MARKS FOR MULTIPLE OFFICERS BY ASSESSMENT ID
+router.post("/marks/optional/update-all/:assessmentId", async (req: Request, res: Response) => {
+    const { assessmentId } = req.params;
+    const marksData = req.body; // expecting array of { officerId, marks }
+    if (!assessmentId || !Array.isArray(marksData)) {
+        return res.status(400).json({ error: "Invalid request" });
+    }
+    try {
+        const assessmentRef = firestore.collection("assessments").doc(assessmentId);
+        const assessmentDoc = await assessmentRef.get();
+        if (!assessmentDoc.exists) {
+            return res.status(404).json({ error: "Assessment not found" });
+        }
+        const assessmentData = assessmentDoc.data();
+        const batch = firestore.batch();
+        marksData.forEach(({ officerId, marks }) => {
+            if (marks <= assessmentData?.totalMarks) {
+                const marksRef = firestore.collection("marks").doc();
+                batch.set(marksRef, {
+                    assessmentId,
+                    officerId,
+                    marks
+                });
+            }
+        });
+        await batch.commit();
+        res.status(201).json({ message: "Marks added successfully for all officers" });
+    } catch (error) {
+        console.error("Error adding marks for all officers:", error);
+        res.status(500).json({ error: "Failed to add marks for all officers" });
+    }
+});
+
+// UPDATE COMPULSORY MARKS FOR MULTIPLE OFFICERS
+router.put("/compulsory-marks/update-all", async (req: Request, res: Response) => {
+    const marksUpdates = req.body;
+    // body = [{officerId; string, courseId: string, marks: Array<string>}]
+    if (!Array.isArray(marksUpdates)) {
+        return res.status(400).json({ error: "Invalid request" });
+    }
+    try {
+        const batch = firestore.batch();
+        for (const { officerId, courseId, marks } of marksUpdates) {
+            const officerRef = firestore.collection("officers").doc(officerId);
+            const officerDoc = await officerRef.get();
+            if (!officerDoc.exists) {
+                console.warn(`Officer with ID ${officerId} not found, skipping.`);
+                continue;
+            }
+            const officerData = officerDoc.data();
+            const compulsoryCourses = officerData?.compulsoryCourses || [];
+            const index = compulsoryCourses.findIndex((c: any) => c.courseId === courseId);
+            if (index >= 0) {
+                compulsoryCourses[index].marksArray = marks; // update existing course
+            }
+            else {
+                compulsoryCourses.push({ courseId, marksArray: marks }); // add new course
+            }
+            batch.update(officerRef, { compulsoryCourses });
+        }
+        await batch.commit();
+        res.status(200).json({ message: "Compulsory marks updated successfully for all officers" });
+    } catch (error) {
+        console.error("Error updating compulsory marks for all officers:", error);
+        res.status(500).json({ error: "Failed to update compulsory marks for all officers" });
+    }
+
+});
+
+// ADD MARKS FOR MULTIPLE OFFICERS BY ASSESSMENT ID
+router.post("/marks/:assessmentId", async (req: Request, res: Response) => {
+    const { assessmentId } = req.params;
+    const marksData = req.body; // expecting array of { officerId, marks }
+    if (!assessmentId || !Array.isArray(marksData)) {
+        return res.status(400).json({ error: "Invalid request" });
+    }
+    try {
+        const assessmentRef = firestore.collection("assessments").doc(assessmentId);
+        const assessmentDoc = await assessmentRef.get();
+        if (!assessmentDoc.exists) {
+            return res.status(404).json({ error: "Assessment not found" });
+        }
+        const assessmentData = assessmentDoc.data();
+        const batch = firestore.batch();
+        marksData.forEach(({ officerId, marks }) => {
+            if (marks <= assessmentData?.totalMarks) {
+                const marksRef = firestore.collection("marks").doc();
+                batch.set(marksRef, {
+                    assessmentId,
+                    officerId,
+                    marks
+                });
+            }
+        });
+        await batch.commit();
+        res.status(201).json({ message: "Marks added successfully for all officers" });
+    } catch (error) {
+        console.error("Error adding marks for all officers:", error);
+        res.status(500).json({ error: "Failed to add marks for all officers" });
+    }
+});
+
+// GET FAILED COMPULSORY COURSES BY CLASS ID
+router.get("/class/:classId/failed-compulsory-courses", async (req: Request, res: Response) => {
+    const {classId} = req.params;
+    if (!classId) {
+        return res.status(400).json({ error: "Missing classId in parameter" });
+    }
+    try {
+        // get all officers in the class
+        const enrollmentSnapshot = await firestore.collection("enrollments").where("classId", "==", classId).get();
+        const officerIds = enrollmentSnapshot.docs.map(doc => doc.data().officerId);
+        const failedCoursesMap: {[key: string]: Set<FirebaseFirestore.DocumentData | undefined>} = {};
+        for (const officerId of officerIds) {
+            const officerDoc = await firestore.collection("officers").doc(officerId).get();
+            if (officerDoc.exists && officerDoc.data()?.compulsoryCourses) {
+                console.log("Officer Compulsory Courses:", officerDoc.data()?.compulsoryCourses);
+               officerDoc.data()?.compulsoryCourses?.forEach(({courseName, marksArray} : {courseName: string, marksArray: Array<string>} ) => {
+                 if(marksArray.includes("F") && !marksArray.includes("P")) {
+                   if (!failedCoursesMap[courseName]) {
+                       failedCoursesMap[courseName] = new Set<FirebaseFirestore.DocumentData | undefined>();
+                   }
+                   failedCoursesMap[courseName].add(officerDoc?.data());
+                }
+            })
+        }
+    }
+        console.log("Failed Courses Map:", failedCoursesMap);
+        // Convert Sets to arrays for response
+        const result = Object.fromEntries(
+        Object.entries(failedCoursesMap).map(([k, v]) => [k, Array.from(v)])
+        );
+        res.status(200).json({ failedCourses: result });
+        // res.status(200).json({ failedCourses: failedCoursesMap });
+    } catch (error) {
+        console.error("Error getting failed compulsory courses:", error);
+        res.status(500).json({ error: "Failed to get failed compulsory courses" });
     }
 });
 
