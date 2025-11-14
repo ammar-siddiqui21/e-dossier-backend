@@ -183,12 +183,16 @@ router.get("/officer", async (req : Request, res : Response) => {
 
 // ADD A COURSE
 router.post("/course", async (req : Request, res : Response) => {
-    const { courseName, type, category } = req.body;
-    if (!courseName || !type || !category) {
-        return res.status(400).json({ error: "Missing courseName, type or category" });
+    const { courseName, type, module } = req.body;
+    if (!courseName || !type) {
+        return res.status(400).json({ error: "Missing courseName or type" });
     }
     try {
-        const courseRef = await firestore.collection("courses").add({ courseName, type, category });
+        let documentToAdd : {courseName: string, type: string, module?: string} = { courseName, type };
+        if(module) {
+            documentToAdd['module'] = module;
+        }
+        const courseRef = await firestore.collection("courses").add(documentToAdd);
         res.status(201).json({ id: courseRef.id, message: "Course added successfully" });
     } catch (error) {
         console.error("Error adding course:", error);
@@ -572,12 +576,12 @@ router.get("/class/:classId/failed-compulsory-courses", async (req: Request, res
             const officerDoc = await firestore.collection("officers").doc(officerId).get();
             if (officerDoc.exists && officerDoc.data()?.compulsoryCourses) {
                 console.log("Officer Compulsory Courses:", officerDoc.data()?.compulsoryCourses);
-               officerDoc.data()?.compulsoryCourses?.forEach(({courseName, marksArray} : {courseName: string, marksArray: Array<string>} ) => {
+               officerDoc.data()?.compulsoryCourses?.forEach(({courseId, marksArray} : {courseId: string, marksArray: Array<string>} ) => {
                  if(marksArray.includes("F") && !marksArray.includes("P")) {
-                   if (!failedCoursesMap[courseName]) {
-                       failedCoursesMap[courseName] = new Set<FirebaseFirestore.DocumentData | undefined>();
+                   if (!failedCoursesMap[courseId]) {
+                       failedCoursesMap[courseId] = new Set<FirebaseFirestore.DocumentData | undefined>();
                    }
-                   failedCoursesMap[courseName].add(officerDoc?.data());
+                   failedCoursesMap[courseId].add(officerDoc?.data());
                 }
             })
         }
@@ -592,6 +596,79 @@ router.get("/class/:classId/failed-compulsory-courses", async (req: Request, res
     } catch (error) {
         console.error("Error getting failed compulsory courses:", error);
         res.status(500).json({ error: "Failed to get failed compulsory courses" });
+    }
+});
+
+// GET FAILED OPTIONAL COURSES BY CLASS ID
+router.get("/class/:classId/failed-optional-courses", async (req: Request, res: Response) => {
+    const {classId} = req.params;
+    if(!classId) {
+        return res.status(400).json({ error: "Missing classId in parameter" });
+    } 
+    try {
+        let result : {[courseId: string] : Array<string>} = {}
+        // get all optional courses
+        const optionalCoursesSnapshot = await firestore.collection("courses").where("type", "==", "Optional").get();
+        if(optionalCoursesSnapshot.empty) {
+            return res.status(200).json({ failedOptionalCourses: {} });
+        }
+        for(const course of optionalCoursesSnapshot.docs) {
+            const courseId = course.id;
+
+            // Fetch all assessments of this course
+            const assessmentsSnapshot = await firestore.collection("assessments").where("courseId", "==", courseId).get();
+            if(assessmentsSnapshot.empty) {
+                result[courseId] = []
+                continue;
+            }
+
+            let officerTotals : any = {}
+
+            for(const assessment of assessmentsSnapshot.docs){
+                const assessmentId = assessment.id;
+                let totalMarks = assessment.data().totalMarks;
+                totalMarks = Number(totalMarks);
+
+                const marksSnap = await firestore.collection("marks").where("assessmentId", "==", assessmentId).get()
+
+                for (const marksDoc of marksSnap.docs) {
+                    const {officerId, marks} = marksDoc.data()
+                    if (!officerTotals[officerId]) {
+                    officerTotals[officerId] = { obtained: 0, total: 0 };
+                    }
+
+                    officerTotals[officerId].obtained += marks;
+                    officerTotals[officerId].total += totalMarks;
+                }
+            }
+
+            const failedOfficers = Object.entries(officerTotals)
+            .filter(([_, perf] : [any, any]) => (perf.obtained / perf.total) * 100 < 50)
+            .map(([officerId]) => officerId);
+
+            result[courseId] = failedOfficers;
+        }
+
+        const failedOfficersDetails : {[courseId: string] : FirebaseFirestore.DocumentData | undefined}= {};
+
+        // get details of each failed officer
+        for(const courseId in result) {
+            const officerIds = result[courseId];
+            const officerDetailsPromises = officerIds.map((officerId: string) => 
+                firestore.collection("officers").doc(officerId).get()
+            );
+            const officerDocs = await Promise.all(officerDetailsPromises);
+            const officerDetails = officerDocs
+                .filter(doc => doc.exists)
+                .map(doc => doc.data());
+            failedOfficersDetails[courseId] = officerDetails;
+        }
+
+        res.status(200).json({ failedOfficersDetails })
+    }
+    catch(error) {
+        console.error("Error getting failed optional courses", error);
+        res.status(500).json({ error: "Failed to get failed optional courses" });
     }
 });
 
