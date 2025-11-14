@@ -672,4 +672,42 @@ router.get("/class/:classId/failed-optional-courses", async (req: Request, res: 
     }
 });
 
+// GET ALL ASSESSMENTS OF OFFICER
+router.get("/officer/:officerId/assessments", async (req: Request, res: Response) => {
+    const { officerId } = req.params;
+    if(!officerId) {
+        return res.status(400).json({ error: "Missing officerId in parameter" });
+    }
+    try {
+        // Get all marks records for the officer
+        let result : {
+            [assessmentName : string] : { courseId: string , assessmentMarks: number, obtainedMarks: number } 
+        } = {}
+        const marksSnapshot = await firestore.collection("marks").where("officerId", "==", officerId).get();
+        if(marksSnapshot.empty) {
+            return res.status(200).json([]);
+        }
+        for(const marksDoc of marksSnapshot.docs) {
+            const { assessmentId, marks } = marksDoc.data();
+            // Get assessment details
+            const assessmentRef = firestore.collection("assessments").doc(assessmentId);
+            const assessmentDoc = await assessmentRef.get();
+            if(assessmentDoc.exists) {
+                const assessmentData = assessmentDoc.data();
+                if(assessmentData) {
+                    result[assessmentData.assessmentName] = {
+                        courseId: assessmentData.courseId,
+                        assessmentMarks: Number(assessmentData.totalMarks),
+                        obtainedMarks: Number(marks)
+                    }
+                }
+            }
+        }
+        res.status(200).json({result});
+    } catch (error) {
+        console.error("Error fetching assessments for officer:", error);
+        res.status(500).json({ error: "Failed to fetch assessments for officer" });
+    }
+});
+
 export { router as dataEntryRouter };
