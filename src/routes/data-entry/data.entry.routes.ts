@@ -6,6 +6,7 @@ import { Officer } from "../../common/types/officer";
 import multer from 'multer';
 import { uploadImageToCloudinary } from "../../cloudinary";
 import { UploadApiResponse } from "cloudinary";
+import { Timestamp } from "firebase-admin/firestore";
 
 
 const upload = multer({storage: multer.memoryStorage()});
@@ -707,6 +708,206 @@ router.get("/officer/:officerId/assessments", async (req: Request, res: Response
     } catch (error) {
         console.error("Error fetching assessments for officer:", error);
         res.status(500).json({ error: "Failed to fetch assessments for officer" });
+    }
+});
+
+// GET LEAVE DATA BY OFFICER ID
+router.get("/officer/:officerId/leaves" , async (req: Request, res: Response) => {
+    const { officerId } = req.params;
+    if(!officerId) {
+        return res.status(400).json({ error: "Missing officerId in parameter" });
+    }
+    try {
+        const leavesSnapshot = await firestore.collection("leaves").where("officerId", "==", officerId).get();
+        if(leavesSnapshot.empty) {
+            return res.status(200).json([]);
+        }
+        const leaves = leavesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        res.status(200).json(leaves);
+    } catch (error) {
+        console.error("Error fetching leaves for officer:", error);
+        res.status(500).json({ error: "Failed to fetch leaves for officer" });
+    }
+})
+
+// ADD A LEAVE RECORD FOR OFFICER
+router.post("/officer/:officerId/leave", async (req: Request, res: Response) => {
+    const { officerId } = req.params;
+    const leaveData = req.body;
+    if(!officerId) {
+        return res.status(400).json({ error: "Missing officerId in parameter" });
+    }
+    try {
+        const leaveRef = await firestore.collection("leaves").add({
+            officerId,
+            ...leaveData
+        });
+        res.status(201).json({ id: leaveRef.id, message: "Leave record added successfully" });
+    } catch (error) {
+        console.error("Error adding leave record for officer:", error);
+        res.status(500).json({ error: "Failed to add leave record for officer" });
+    }
+});
+
+// GET MEDICAL RECORDS BY OFFICER ID
+router.get("/officer/:officerId/medical" , async (req: Request, res: Response) => {
+    const { officerId } = req.params;
+    if(!officerId) {
+        return res.status(400).json({ error: "Missing officerId in parameter" });
+    }
+    try {
+        const medicalSnapshot = await firestore.collection("medical").where("officerId", "==", officerId).get();
+        if(medicalSnapshot.empty) {
+            return res.status(200).json([]);
+        }
+        const medicalRecords = medicalSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        res.status(200).json(medicalRecords);
+    } catch (error) {
+        console.error("Error fetching medical records for officer:", error);
+        res.status(500).json({ error: "Failed to fetch medical records for officer" });
+    }
+});
+
+// ADD A MEDICAL RECORD FOR OFFICER
+router.post("/officer/:officerId/medical", async (req: Request, res: Response) => {
+    const { officerId } = req.params;
+    const medicalData = req.body;
+    if(!officerId) {
+        return res.status(400).json({ error: "Missing officerId in parameter" });
+    }
+    try {
+        const medicalRef = await firestore.collection("medical").add({
+            officerId,
+            ...medicalData
+        });
+        res.status(201).json({ id: medicalRef.id, message: "Medical record added successfully" });
+    } catch (error) {
+        console.error("Error adding medical record for officer:", error);
+        res.status(500).json({ error: "Failed to add medical record for officer" });
+    }
+});
+
+// DELETE MEDICAL RECORD BY ID
+router.delete("/medical/:medicalId", async (req: Request, res: Response) => {
+    const { medicalId } = req.params;
+    if(!medicalId) {
+        return res.status(400).json({ error: "Missing medicalId in parameter" });
+    }
+    try {
+        const medicalRef = firestore.collection("medical").doc(medicalId);
+        await medicalRef.delete();
+        res.status(200).json({ message: "Medical record deleted successfully" });
+    } catch (error) {
+        console.error("Error deleting medical record:", error);
+        res.status(500).json({ error: "Failed to delete medical record" });
+    }
+});
+
+// ADD MULTIPLE MEDICAL RECORDS FOR ONE OFFICER
+router.post("/officer/:officerId/medical-records", async (req: Request, res: Response) => {
+    const { officerId } = req.params;
+    const medicalRecordsData = req.body; // expecting array of medical records
+    if(!officerId) {
+        return res.status(400).json({ error: "Missing officerId in parameter" });
+    }
+    if (!Array.isArray(medicalRecordsData) || medicalRecordsData.length === 0) {
+        return res.status(400).json({ error: "Invalid or empty medical records array" });
+    }
+    try {
+        const batch = firestore.batch();
+        medicalRecordsData.forEach((medicalData : any) => {
+            const medicalRef = firestore.collection("medical").doc();
+            batch.set(medicalRef, {
+                officerId,
+                ...medicalData
+            });
+        });
+        await batch.commit();
+        res.status(201).json({ message: "Medical records added successfully" });
+    } catch (error) {
+        console.error("Error adding medical records for officer:", error);
+        res.status(500).json({ error: "Failed to add medical records for officer" });
+    }
+});
+
+// GET WARNINGS BY OFFICER ID
+router.get("/officer/:officerId/warnings" , async (req: Request, res: Response) => {
+    const { officerId } = req.params;
+    if(!officerId) {
+        return res.status(400).json({ error: "Missing officerId in parameter" });
+    }
+    try {
+        const warningsSnapshot = await firestore.collection("warnings").where("officerId", "==", officerId).get();
+        if(warningsSnapshot.empty) {
+            return res.status(200).json([]);
+        }
+        const warnings = warningsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        res.status(200).json(warnings);
+    } catch (error) {
+        console.error("Error fetching warnings for officer:", error);
+        res.status(500).json({ error: "Failed to fetch warnings for officer" });
+    }
+});
+
+// ADD A WARNING RECORD FOR OFFICER
+router.post("/officer/:officerId/warning", async (req: Request, res: Response) => {
+    const { officerId } = req.params;
+    const warningData = req.body;
+    if(!officerId) {
+        return res.status(400).json({ error: "Missing officerId in parameter" });
+    }
+    try {
+        const warningRef = await firestore.collection("warnings").add({
+            officerId,
+            ...warningData
+        });
+        res.status(201).json({ id: warningRef.id, message: "Warning record added successfully" });
+    } catch (error) {
+        console.error("Error adding warning record for officer:", error);
+        res.status(500).json({ error: "Failed to add warning record for officer" });
+    }
+});
+
+// ADD MULTIPLE WARNING RECORDS FOR ONE OFFICER
+router.post("/officer/:officerId/warnings", async (req: Request, res: Response) => {
+    const { officerId } = req.params;
+    const warningsData = req.body; // expecting array of warning records
+    if(!officerId) {
+        return res.status(400).json({ error: "Missing officerId in parameter" });
+    }
+    if (!Array.isArray(warningsData) || warningsData.length === 0) {
+        return res.status(400).json({ error: "Invalid or empty warnings array" });
+    }
+    try {
+        const batch = firestore.batch();
+        warningsData.forEach((warningData : any) => {
+            const warningRef = firestore.collection("warnings").doc();
+            batch.set(warningRef, {
+                officerId,
+                ...warningData
+            });
+        });
+        await batch.commit();
+        res.status(201).json({ message: "Warning records added successfully" });
+    } catch (error) {
+        console.error("Error adding warning records for officer:", error);
+        res.status(500).json({ error: "Failed to add warning records for officer" });
+    }
+});
+
+// DELETE WARNING BY ID 
+router.delete("/warning/:warningId", async (req: Request, res: Response) => {
+    const { warningId } = req.params;
+    if(!warningId) {
+        return res.status(400).json({ error: "Missing warningId in parameter" });
+    }
+    try {
+        const warningRef = firestore.collection("warnings").doc(warningId);
+        await warningRef.delete();
+        res.status(200).json({ message: "Warning record deleted successfully" });
+    } catch (error) {
+        console.error("Error deleting warning record:", error);
+        res.status(500).json({ error: "Failed to delete warning record" });
     }
 });
 
