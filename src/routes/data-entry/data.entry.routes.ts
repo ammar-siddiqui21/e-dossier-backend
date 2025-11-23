@@ -20,7 +20,8 @@ const officerCollection = firestore.collection("officers");
 router.post("/officer/:id/image", upload.single('image'), async (req : Request, res : Response) => {
     try {
         const { id } = req.params;
-        const file = req.file; 
+        const file = req.file;
+        console.log("Received file for upload:", file ? file.originalname : "No file"); 
         if(!id || !file) {
             return res.status(400).json({ error: "Missing officerId in parameter or image file" });
         }
@@ -39,7 +40,6 @@ router.post("/officer/:id/image", upload.single('image'), async (req : Request, 
 // SAVE OFFICER DATA
 router.post("/officer", async (req : Request, res : Response) => {
     const officerData : Officer = req.body;
-    console.log("Received officer data:", req);
     try {
         const docRef = await officerCollection.add(officerData);
         res.status(201).json({ id: docRef.id, message: "Officer data saved successfully" });
@@ -258,7 +258,6 @@ router.get("/course/optional", async (req : Request, res : Response) => {
 // ADD A SINGLE OFFICER IN CLASS
 router.post("/class/:classId/officer/:officerId", async (req : Request, res : Response) => {
     const { classId, officerId } = req.params;
-    console.log("Class ID:", classId, "Officer ID:", officerId);
     try {
         const officerRef = officerCollection.doc(officerId);
         const classRef = firestore.collection("class").doc(classId);        
@@ -347,6 +346,15 @@ router.delete("/class/:id", async (req : Request, res : Response) => {
     try {
         const classRef = firestore.collection("class").doc(id);
         await classRef.delete();
+        // delete all enrollments related to this class
+        const enrollmentSnapshot = await firestore.collection("enrollments").where("classId", "==", id).get();
+        const batch = firestore.batch();
+        enrollmentSnapshot.docs.forEach(doc => {
+            const officerRef = firestore.collection("officers").doc(doc.data().officerId);
+            batch.delete(doc.ref);
+            batch.delete(officerRef);
+        });
+        await batch.commit();
         res.status(200).json({ message: "Class deleted successfully" });
     } catch (error) {
         console.error("Error deleting class:", error);
@@ -576,7 +584,6 @@ router.get("/class/:classId/failed-compulsory-courses", async (req: Request, res
         for (const officerId of officerIds) {
             const officerDoc = await firestore.collection("officers").doc(officerId).get();
             if (officerDoc.exists && officerDoc.data()?.compulsoryCourses) {
-                console.log("Officer Compulsory Courses:", officerDoc.data()?.compulsoryCourses);
                officerDoc.data()?.compulsoryCourses?.forEach(({courseId, marksArray} : {courseId: string, marksArray: Array<string>} ) => {
                  if(marksArray.includes("F") && !marksArray.includes("P")) {
                    if (!failedCoursesMap[courseId]) {
@@ -587,7 +594,6 @@ router.get("/class/:classId/failed-compulsory-courses", async (req: Request, res
             })
         }
     }
-        console.log("Failed Courses Map:", failedCoursesMap);
         // Convert Sets to arrays for response
         const result = Object.fromEntries(
         Object.entries(failedCoursesMap).map(([k, v]) => [k, Array.from(v)])
@@ -686,7 +692,7 @@ router.get("/officer/:officerId/assessments", async (req: Request, res: Response
         } = {}
         const marksSnapshot = await firestore.collection("marks").where("officerId", "==", officerId).get();
         if(marksSnapshot.empty) {
-            return res.status(200).json([]);
+            return res.status(200).json({ result: {} });
         }
         for(const marksDoc of marksSnapshot.docs) {
             const { assessmentId, marks } = marksDoc.data();
@@ -908,6 +914,95 @@ router.delete("/warning/:warningId", async (req: Request, res: Response) => {
     } catch (error) {
         console.error("Error deleting warning record:", error);
         res.status(500).json({ error: "Failed to delete warning record" });
+    }
+});
+
+// GET PET RECORD BY OFFICER ID
+// EVERY OFFICER WILL HAVE ONLY ONE PET RECORD
+router.get("/officer/:officerId/pet", async (req: Request, res: Response) => {
+    const { officerId } = req.params;
+    if(!officerId) {
+        return res.status(400).json({ error: "Missing officerId in parameter" });
+    }
+    try {
+        const petSnapshot = await firestore.collection("pets").where("officerId", "==", officerId).limit(1).get();
+        if(petSnapshot.empty) {
+            return res.status(200).json(null);
+        }
+        const pet = { id: petSnapshot.docs[0].id, ...petSnapshot.docs[0].data() };
+        res.status(200).json(pet);
+    } catch (error) {
+        console.error("Error fetching pets for officer:", error);
+        res.status(500).json({ error: "Failed to fetch pets for officer" });
+    }
+});
+
+// ADD A PET RECORD FOR OFFICER
+router.post("/officer/:officerId/pet", async (req: Request, res: Response) => {
+    const { officerId } = req.params;
+    const petData = req.body;
+    if(!officerId) {
+        return res.status(400).json({ error: "Missing officerId in parameter" });
+    }
+    try {
+        const petRef = await firestore.collection("pets").add({
+            officerId,
+            ...petData
+        });
+        res.status(201).json({ id: petRef.id, message: "Pet record added successfully" });
+    } catch (error) {
+        console.error("Error adding pet record for officer:", error);
+        res.status(500).json({ error: "Failed to add pet record for officer" });
+    }
+});
+
+// ADD TRAITS ASSESSMENT FOR OFFICER
+router.post("/officer/:officerId/traits-assessments", async (req: Request, res: Response) => {
+    const { officerId } = req.params;
+    const traitsData = req.body; //[{ traitName: string, score: number, tap: number, total: number }]
+
+    if(!officerId) {
+        return res.status(400).json({ error: "Missing officerId in parameter" });
+    }
+    if(!Array.isArray(traitsData) || traitsData.length === 0) {
+        return res.status(400).json({ error: "Invalid or empty traits data" });
+    }
+    try {
+        const batch = firestore.batch();
+        traitsData.forEach((trait: {traitName: string, score: number, total: number, tap: 1 | 2}) => {
+            const traitRef = firestore.collection("traits").doc();
+            batch.set(traitRef, {
+                officerId,
+                tap: trait.tap,
+                traitName: trait.traitName,
+                score: trait.score,
+                total: trait.total
+            });
+        });
+        await batch.commit();
+        res.status(201).json({ message: "Traits assessment added successfully" });
+    } catch (error) {
+        console.error("Error adding traits assessment for officer:", error);
+        res.status(500).json({ error: "Failed to add traits assessment for officer" });
+    }
+})
+
+// GET TRAITS ASSESSMENT BY OFFICER ID
+router.get("/officer/:officerId/traits-assessments", async (req: Request, res: Response) => {
+    const { officerId } = req.params;
+    if(!officerId) {
+        return res.status(400).json({ error: "Missing officerId in parameter" });
+    }
+    try {
+        const traitsSnapshot = await firestore.collection("traits").where("officerId", "==", officerId).get();
+        if(traitsSnapshot.empty) {
+            return res.status(200).json([]);
+        }
+        const traitsAssessments = traitsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        res.status(200).json(traitsAssessments);
+    } catch (error) {
+        console.error("Error fetching traits assessments for officer:", error);
+        res.status(500).json({ error: "Failed to fetch traits assessments for officer" });
     }
 });
 

@@ -10,6 +10,7 @@ export type Officer = {
     emergencyContact: FamilyInformation;
     additionalFamilyInformation?: FamilyInformation[];
     marks? : Course[];
+    pet: Pet[];
 }
 
 export type FamilyInformation = {
@@ -22,4 +23,10 @@ export type FamilyInformation = {
 export type Course = {
     courseId: string;
     marks: number;
+}
+
+export type Pet = {
+    totalMarks: number;
+    obtainedMarks: number;
+    remarks?: string;
 }
