@@ -253,6 +253,24 @@ router.post("/courses/bulk", async (req: Request, res: Response) => {
     }
 });
 
+// UPDATE COURSE
+router.put("/course/:id", async (req : Request, res : Response) => {
+    const { id } = req.params;
+    const updatedData = req.body;
+    try {
+        const courseRef = firestore.collection("courses").doc(id);
+        if(courseRef) {
+            await courseRef.update(updatedData);
+        } else {
+            return res.status(404).json({ error: "Course not found" });
+        }
+        res.status(200).json({ message: "Course updated successfully" });
+    } catch (error) {
+        console.error("Error updating course:", error);
+        res.status(500).json({ error: "Failed to update course" });
+    }
+});
+
 // GET ALL COURSES
 router.get("/course", async (req : Request, res : Response) => {
     try {
