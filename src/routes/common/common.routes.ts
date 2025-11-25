@@ -249,4 +249,20 @@ router.delete("/officers", async (req, res) => {
     }
 });
 
+// DELETE ALL ENROLLMENTS
+router.delete("/enrollments", async (req, res) => {
+    try {
+        const enrollmentsSnapshot = await enrollmentCollection.get();
+        const batch = firestore.batch();
+        enrollmentsSnapshot.docs.forEach(doc => {
+            batch.delete(doc.ref);
+        });
+        await batch.commit();
+        res.status(200).json({ message: "All enrollments deleted successfully" });
+    } catch (error) {
+        console.error("Error deleting all enrollments:", error);
+        res.status(500).json({ error: "Failed to delete all enrollments" });
+    }
+});
+
 export { router as commonRouter };

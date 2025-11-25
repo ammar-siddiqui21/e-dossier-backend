@@ -49,6 +49,38 @@ router.post("/officer", async (req : Request, res : Response) => {
     }
 });
 
+// SAVE MULTIPLE OFFICERS DATA
+router.post("/officers/bulk", async (req: Request, res: Response) => {
+    const officersData: Officer[] = req.body; // expecting array
+
+    if (!Array.isArray(officersData) || officersData.length === 0) {
+        return res.status(400).json({ error: "Invalid or empty officers array" });
+    }
+
+    try {
+        const batch = firestore.batch();
+
+        const createdOfficerIds: string[] = [];
+
+        officersData.forEach((officer: Officer) => {
+            const newDocRef = officerCollection.doc();  // <-- generate id
+            createdOfficerIds.push(newDocRef.id);       // <-- STORE THE ID NOW
+            batch.set(newDocRef, officer);              // <-- add to batch
+        });
+
+        await batch.commit();
+
+        res.status(201).json({
+            message: "Officers data saved successfully",
+            ids: createdOfficerIds
+        });
+    } catch (error) {
+        console.error("Error saving officers data in bulk:", error);
+        res.status(500).json({ error: "Failed to save officers data in bulk" });
+    }
+});
+
+
 // UPDATE OFFICER DATA
 router.put("/officer/:id", async (req : Request, res : Response) => {
     const { id } = req.params;
@@ -201,6 +233,26 @@ router.post("/course", async (req : Request, res : Response) => {
     }
 });
 
+// ADD MULTIPLE COURSES
+router.post("/courses/bulk", async (req: Request, res: Response) => {
+    const courses = req.body; // expecting array of courses
+    if (!Array.isArray(courses) || courses.length === 0) {
+        return res.status(400).json({ error: "Invalid or empty courses array" });
+    }
+    try {
+        const batch = firestore.batch();
+        courses.forEach((course : { courseName: string; type: string; module?: string; weightage?: number }) => {
+            const courseRef = firestore.collection("courses").doc();
+            batch.set(courseRef, course);
+        });
+        await batch.commit();
+        res.status(201).json({ message: "Courses added successfully" });
+    } catch (error) {
+        console.error("Error adding courses in bulk:", error);
+        res.status(500).json({ error: "Failed to add courses in bulk" });
+    }
+});
+
 // GET ALL COURSES
 router.get("/course", async (req : Request, res : Response) => {
     try {
@@ -284,6 +336,7 @@ router.post("/class/:classId/officer/:officerId", async (req : Request, res : Re
 router.post("/class/:classId/officers", async (req : Request, res : Response) => {
     const { classId } = req.params;
     const { officerIds } = req.body; // expecting array of officer IDs
+    console.log("Officer IDs to add:", officerIds);
     if(!classId) {
         return res.status(400).json({ error: "Missing classId in parameter" });
     }
@@ -291,18 +344,26 @@ router.post("/class/:classId/officers", async (req : Request, res : Response) =>
         return res.status(400).json({ error: "Invalid or empty officerIds array" });
     }
     try {
-        const classRef = firestore.collection("classes").doc(classId);
+        const classRef = firestore.collection("class").doc(classId);
         const classDoc = await classRef.get();
         if (!classDoc.exists) {
             return res.status(404).json({ error: "Class not found" });
         }
         const batch = firestore.batch();
-        officerIds.forEach((officerId : string) => {
-            batch.set(firestore.collection("enrollments").doc(), {
+        const enrollmentCollection = firestore.collection("enrollments");
+        for(const officerId of officerIds) {
+            const officerRef = officerCollection.doc(officerId);
+            const officerDoc = await officerRef.get();
+            if (!officerDoc.exists) {
+                console.warn(`Officer with ID ${officerId} not found, skipping.`);
+                continue;
+            }
+            const enrollmentsRef = enrollmentCollection.doc();
+            batch.set(enrollmentsRef, {
                 classId,
                 officerId
             });
-        });
+        }
         await batch.commit();
         res.status(201).json({ message: "Officers added to class successfully" });
     } catch (error) {
@@ -379,6 +440,23 @@ router.post("/assessment/:courseId", async (req: Request, res: Response) => {
     } catch (error) {
         console.error("Error adding assessment:", error);
         res.status(500).json({ error: "Failed to add assessment" });
+    }
+});
+
+// UPDATE ASSESSMENT BY ASSESSMENT ID
+router.put("/assessment/:assessmentId", async (req: Request, res: Response) => {
+    const { assessmentId } = req.params;
+    const updatedData = req.body;
+    if (!assessmentId) {
+        return res.status(400).json({ error: "Missing assessmentId in parameter" });
+    }
+    try {
+        const assessmentRef = firestore.collection("assessments").doc(assessmentId);
+        await assessmentRef.update(updatedData);
+        res.status(200).json({ message: "Assessment updated successfully" });
+    } catch (error) {
+        console.error("Error updating assessment:", error);
+        res.status(500).json({ error: "Failed to update assessment" });
     }
 });
 
@@ -585,7 +663,7 @@ router.get("/class/:classId/failed-compulsory-courses", async (req: Request, res
             const officerDoc = await firestore.collection("officers").doc(officerId).get();
             if (officerDoc.exists && officerDoc.data()?.compulsoryCourses) {
                officerDoc.data()?.compulsoryCourses?.forEach(({courseId, marksArray} : {courseId: string, marksArray: Array<string>} ) => {
-                 if(marksArray.includes("F") && !marksArray.includes("P")) {
+                 if((marksArray.includes("F") && !marksArray.includes("P")) || (marksArray.includes("NATT") && !marksArray.includes("ATT"))) {
                    if (!failedCoursesMap[courseId]) {
                        failedCoursesMap[courseId] = new Set<FirebaseFirestore.DocumentData | undefined>();
                    }
@@ -914,6 +992,27 @@ router.delete("/warning/:warningId", async (req: Request, res: Response) => {
     } catch (error) {
         console.error("Error deleting warning record:", error);
         res.status(500).json({ error: "Failed to delete warning record" });
+    }
+});
+
+// UPDATE WARNING RECORD WITH IMAGE BY WARNING ID
+router.put("/warning/:warningId", upload.single('image'), async (req: Request, res: Response) => {
+    const { warningId } = req.params;
+    const file = req.file;
+    console.log("Received file for upload:", file ? file.originalname : "No file");
+    if(!warningId || !file) {
+        return res.status(400).json({ error: "Missing warningId in parameter or image file" });
+    }
+    try {
+        const result = await uploadImageToCloudinary(file.buffer, warningId) as UploadApiResponse;
+        if(result.secure_url) {
+            const warningRef = firestore.collection("warnings").doc(warningId);
+            await warningRef.update({ imageUrl: result.secure_url });
+        }
+        res.status(200).json({ imageUrl: result.secure_url ,message: "Warning record updated successfully" });
+    } catch (error) {
+        console.error("Error updating warning record:", error);
+        res.status(500).json({ error: "Failed to update warning record" });
     }
 });
 
