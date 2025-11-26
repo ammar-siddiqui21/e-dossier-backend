@@ -2,6 +2,8 @@ import { Router, Request, Response } from "express";
 import { firestore } from "../../firebase";
 import dotenv from "dotenv";
 import { Pet } from "../../common/types/officer";
+import { utils } from "../utils";
+import { openai } from "../../openai";
 
 dotenv.config();
 const router = Router();
@@ -262,6 +264,88 @@ router.delete("/enrollments", async (req, res) => {
     } catch (error) {
         console.error("Error deleting all enrollments:", error);
         res.status(500).json({ error: "Failed to delete all enrollments" });
+    }
+});
+
+// GET AI SUMMARY FOR A CLASS BY CLASS ID
+router.get("/class/:classId/ai-summary", async (req: Request, res: Response) => {
+    const { classId } = req.params;
+    try {
+        if(!classId) {
+            return res.status(400).json({ error: "classId parameter is required" });
+        }
+        const avgOfClass = utils.calculateAverageOfClass(classId);
+        const numberOfOfficers = utils.getNumberOfOfficersInClass(classId);
+        const failedOfficers = utils.getFailedOfficersInClass(classId);
+        const petMarks = utils.getPetMarksOfClass(classId);
+        const [averageMarks, totalOfficers, failedInClass, {totalPetMarks, obtainedPetMarks}] = await Promise.all([avgOfClass, numberOfOfficers, failedOfficers, petMarks]);
+        const areOfficersNotFailed = utils.isObjectEmpty(failedInClass);
+        if(averageMarks === 0 || totalPetMarks === 0 || obtainedPetMarks === 0 || totalOfficers === 0) {
+            return res.status(200).json({ aiSummary: "No data available to generate summary." });
+        }
+        // Generate AI summary using OpenAi
+        const prompt = `
+        You are an educational performance analyzer. Summarize: - Class performance - Weak areas - Improvement recommendations - Special notes Use short bullet points. Avoid technical/exam terms. Be concise. 
+        Here are the class . Failed officers shows course name and number of officers failed in it.
+        - Average Marks: ${averageMarks}
+        - Total Officers: ${totalOfficers}
+        - Failed Officers: ${areOfficersNotFailed ? "None" : JSON.stringify(failedInClass)}
+        - PET Marks: ${totalPetMarks} (Obtained: ${obtainedPetMarks})
+        `
+
+        const response = await openai.chat.completions.create({
+            model: "gpt-4.1-mini",
+            messages: [{
+                role: "user",
+                content: prompt
+            }],
+            max_completion_tokens: 500,
+        })
+        const aiSummary = response.choices[0].message?.content || "No summary generated.";
+        res.status(200).json({ aiSummary });
+    }
+    catch (error) {
+        console.error("Error generating AI summary for class:", error);
+        res.status(500).json({ error: "Failed to generate AI summary for class" });
+    }
+})
+
+// GET AI SUMMARY FOR AN OFFICER BY OFFICER ID
+router.get("/officer/:officerId/ai-summary", async (req: Request, res: Response) => {
+    const { officerId } = req.params;
+    try {
+        if(!officerId) {
+            return res.status(400).json({ error: "officerId parameter is required" });
+        }
+        const officerDetails = utils.getDetailsOfOfficer(officerId);
+        const averageMarks = utils.getAvgMarksOfOfficer(officerId);
+        const traits = utils.getTraitsOfOfficer(officerId);
+        const [details, avgMarks, officerTraits] = await Promise.all([officerDetails, averageMarks, traits]);
+        if(avgMarks === 0 || officerTraits.length === 0) {
+            return res.status(200).json({ aiSummary: "No data available to generate summary." });
+        }
+        const formattedTraits = officerTraits.map(trait => `${trait.traitName}: Score ${Number((trait.score/trait.total).toFixed(2))}`).join("; ");
+        const prompt = `
+        You are an educational performance analyzer. Summarize: - Officer performance - Weak areas - Improvement recommendations - Special notes Use short bullet points. Avoid technical/exam terms. Be concise.
+        Here are the officer details:
+        - Name: ${details?.name}
+        - Average Marks: ${avgMarks}
+        - Traits: ${formattedTraits}
+        `
+        const response = await openai.chat.completions.create({
+            model: "gpt-4.1-mini",
+            messages: [{
+                role: "user",
+                content: prompt
+            }],
+            max_completion_tokens: 500,
+        })
+        const aiSummary = response.choices[0].message?.content || "No summary generated.";
+        res.status(200).json({ aiSummary });
+    }
+    catch (error) {
+        console.error("Error generating AI summary for officer:", error);
+        res.status(500).json({ error: "Failed to generate AI summary for officer" });
     }
 });
 
