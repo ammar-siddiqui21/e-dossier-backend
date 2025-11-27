@@ -12,6 +12,10 @@ const router = Router();
 const enrollmentCollection = firestore.collection("enrollments");
 const officerCollection = firestore.collection("officers");
 
+router.get("/ping", (req: Request, res: Response) => {
+    res.status(200).json({ message: "Pong from common routes!" });
+})
+
 // GET ALL OFFICERS OF A CLASS
 router.get("/class/:classId/officers", async (req, res) => {
     const { classId } = req.params;
