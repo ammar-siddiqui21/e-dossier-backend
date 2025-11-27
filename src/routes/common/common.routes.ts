@@ -285,7 +285,7 @@ router.get("/class/:classId/ai-summary", async (req: Request, res: Response) => 
         }
         // Generate AI summary using OpenAi
         const prompt = `
-        You are an educational performance analyzer. Summarize: - Class performance - Weak areas - Improvement recommendations - Special notes Use short bullet points. Avoid technical/exam terms. Be concise. 
+        You are an educational performance analyzer. Summarize: - Class performance - Weak areas - Improvement recommendations - Special notes Use short bullet points. Avoid technical/exam terms. Be concise Give heading to each section. 
         Here are the class . Failed officers shows course name and number of officers failed in it.
         - Average Marks: ${averageMarks}
         - Total Officers: ${totalOfficers}
