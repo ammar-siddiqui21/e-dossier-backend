@@ -5,6 +5,10 @@ import { firestore } from "../firebase";
 const enrollmentCollection = firestore.collection("enrollments");
 const officerCollection = firestore.collection("officers");
 
+type WarningResponse = {
+    [key: string]: string[]
+}
+
 
 class Utils {
 
@@ -143,7 +147,28 @@ class Utils {
         for (const traitDoc of traitsSnapshot.docs) {
             traits.push(traitDoc.data());
         }
-        return traits;
+        return traits.filter((_, index) => index < 5); // return top 5 traits
+    }
+
+    getWarningsOfOfficer = async (officerId: string) => {
+        const warningsSnapshot = await firestore.collection("warnings").where("officerId", "==", officerId).get();
+        let result : WarningResponse = { 'green-slip': [], 'red-slip': [] };
+        for (const warningDoc of warningsSnapshot.docs) {
+            const {type, punishment, offense} = warningDoc.data();
+            if(type === 'observations') {
+                if(punishment.toLowerCase().includes('green slip')){
+                    result['green-slip'].push(offense);
+                } else if(punishment.toLowerCase().includes('red slip')){
+                    result['red-slip'].push(offense); 
+                }
+            }
+        }
+        return result;
+    }
+
+    getNumberOfTimesSailorGotSick = async (officerId: string) => {
+        const medicalSnapshot = await firestore.collection("medical").where("officerId", "==", officerId).get();
+        return medicalSnapshot.size;
     }
 
     isObjectEmpty = (obj: Object) => {

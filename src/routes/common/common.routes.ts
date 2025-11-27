@@ -320,17 +320,28 @@ router.get("/officer/:officerId/ai-summary", async (req: Request, res: Response)
         const officerDetails = utils.getDetailsOfOfficer(officerId);
         const averageMarks = utils.getAvgMarksOfOfficer(officerId);
         const traits = utils.getTraitsOfOfficer(officerId);
-        const [details, avgMarks, officerTraits] = await Promise.all([officerDetails, averageMarks, traits]);
+        const warnings = utils.getWarningsOfOfficer(officerId);
+        const numberOfTimesSick = utils.getNumberOfTimesSailorGotSick(officerId);
+        const [details, avgMarks, officerTraits, warningRecords, sickCount] = await Promise.all([officerDetails, averageMarks, traits, warnings, numberOfTimesSick]);
         if(avgMarks === 0 || officerTraits.length === 0) {
             return res.status(200).json({ aiSummary: "No data available to generate summary." });
         }
         const formattedTraits = officerTraits.map(trait => `${trait.traitName}: Score ${Number((trait.score/trait.total).toFixed(2))}`).join("; ");
+        let formattedWarnings = '';
+        if(!utils.isObjectEmpty(warningRecords)){
+            formattedWarnings = `Observations - Green Slips: ${warningRecords['green-slip'].length > 0 ? warningRecords['green-slip'].join(", ") : "None"}; Red Slips: ${warningRecords['red-slip'].length > 0 ? warningRecords['red-slip'].join(", ") : "None"}.`;
+        }
         const prompt = `
-        You are an educational performance analyzer. Summarize: - Officer performance - Weak areas - Improvement recommendations - Special notes Use short bullet points. Avoid technical/exam terms. Be concise.
-        Here are the officer details:
+        You are an educational performance analyzer. Summarize: - Sailor performance - Weak areas - Improvement recommendations - Special notes Use short bullet points. Avoid technical/exam terms. Be concise. Give heading to each section.
+        Green slip means good behavior while red slip means bad behavior in Observations. Health status Fit ex means sailor is on extended medical leave.
+        Also use sailor instead of officer in the summary.
+        Here are the sailor details:
         - Name: ${details?.name}
+        - Health Status: ${details?.medicalCategory ? details.medicalCategory : "Not Available"}
         - Average Marks: ${avgMarks}
         - Traits: ${formattedTraits}
+        - Observations: ${!!formattedWarnings ? formattedWarnings : "None"}
+        - Times Sick: ${sickCount}
         `
         const response = await openai.chat.completions.create({
             model: "gpt-4.1-mini",
@@ -338,7 +349,7 @@ router.get("/officer/:officerId/ai-summary", async (req: Request, res: Response)
                 role: "user",
                 content: prompt
             }],
-            max_completion_tokens: 500,
+            max_completion_tokens: 800,
         })
         const aiSummary = response.choices[0].message?.content || "No summary generated.";
         res.status(200).json({ aiSummary });
