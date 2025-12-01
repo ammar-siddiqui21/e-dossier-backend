@@ -851,6 +851,256 @@ router.post("/officer/:officerId/leave", async (req: Request, res: Response) => 
     }
 });
 
+// ADD MULTIPLE LEAVE RECORDS FOR ONE OFFICER
+router.post("/officer/:officerId/leaves", async (req: Request, res: Response) => {
+    const { officerId } = req.params;
+    const leaveRecordsData = req.body; // expecting array of leave records
+    if(!officerId) {
+        return res.status(400).json({ error: "Missing officerId in parameter" });
+    }
+    if (!Array.isArray(leaveRecordsData) || leaveRecordsData.length === 0) {
+        return res.status(400).json({ error: "Invalid or empty leave records array" });
+    }
+    try {
+        const batch = firestore.batch();
+        leaveRecordsData.forEach((leaveData : any) => {
+            const leaveRef = firestore.collection("leaves").doc();
+            batch.set(leaveRef, {
+                officerId,
+                ...leaveData
+            });
+        });
+        await batch.commit();
+        res.status(201).json({ message: "Leave records added successfully" });
+    } catch (error) {
+        console.error("Error adding leave records for officer:", error);
+        res.status(500).json({ error: "Failed to add leave records for officer" });
+    }
+});
+
+// UPDATE MULTIPLE LEAVE RECORDS BY ID
+router.put("/leaves", async (req: Request, res: Response) => {
+    const leaveUpdates = req.body; // expecting array of { id: string, ...updatedData }
+    if (!Array.isArray(leaveUpdates) || leaveUpdates.length === 0) {
+        return res.status(400).json({ error: "Invalid or empty leave updates array" });
+    }
+    try {
+        const batch = firestore.batch();
+        leaveUpdates.forEach((leaveRecord : { id: string, from: string, to: string, days: number, type: string, leaveAddress: string }) => {
+            const leaveRef = firestore.collection("leaves").doc(leaveRecord.id);
+            // remove id from leaveRecord before updating
+            const payload = {
+                from: leaveRecord.from,
+                to: leaveRecord.to,
+                days: leaveRecord.days,
+                type: leaveRecord.type,
+                leaveAddress: leaveRecord.leaveAddress
+            }
+            batch.update(leaveRef, payload);
+        });
+        await batch.commit();
+        res.status(200).json({ message: "Leave records updated successfully" });
+    } catch (error) {
+        console.error("Error updating leave records:", error);
+        res.status(500).json({ error: "Failed to update leave records" });
+    }   
+});
+
+// DELETE LEAVE RECORD BY ID
+router.delete("/:leaveId/leaves", async (req: Request, res: Response) => {
+    const { leaveId } = req.params;
+    if(!leaveId) {
+        return res.status(400).json({ error: "Missing leaveId in parameter" });
+    }
+    try {
+        const leaveRef = firestore.collection("leaves").doc(leaveId);
+        await leaveRef.delete();
+        res.status(200).json({ message: "Leave record deleted successfully" });
+    } catch (error) {
+        console.error("Error deleting leave record:", error);
+        res.status(500).json({ error: "Failed to delete leave record" });
+    }
+});
+
+// GET KIT ITEMS BY OFFICER ID
+router.get("/officer/:officerId/kit-items" , async (req: Request, res: Response) => {
+    const { officerId } = req.params;
+    if(!officerId) {
+        return res.status(400).json({ error: "Missing officerId in parameter" });
+    }
+    try {
+        const kitItemsSnapshot = await firestore.collection("kitItems").where("officerId", "==", officerId).get();
+        if(kitItemsSnapshot.empty) {
+            return res.status(200).json([]);
+        }
+        const kitItems = kitItemsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        res.status(200).json(kitItems);
+    } catch (error) {
+        console.error("Error fetching kit items for officer:", error);
+        res.status(500).json({ error: "Failed to fetch kit items for officer" });
+    }
+});
+
+// ADD MULTIPLE KIT ITEM RECORDS FOR ONE OFFICER
+router.post("/officer/:officerId/kit-items", async (req: Request, res: Response) => {
+    const { officerId } = req.params;
+    const kitItemsData = req.body; // expecting array of kit item records
+    if(!officerId) {
+        return res.status(400).json({ error: "Missing officerId in parameter" });
+    }
+    if (!Array.isArray(kitItemsData) || kitItemsData.length === 0) {
+        return res.status(400).json({ error: "Invalid or empty kit items array" });
+    }
+    try {
+        const batch = firestore.batch();
+        kitItemsData.forEach((kitItemData : any) => {
+            const kitItemRef = firestore.collection("kitItems").doc();
+            batch.set(kitItemRef, {
+                officerId,
+                ...kitItemData
+            });
+        });
+        await batch.commit();
+        res.status(201).json({ message: "Kit item records added successfully" });
+    } catch (error) {
+        console.error("Error adding kit item records for officer:", error);
+        res.status(500).json({ error: "Failed to add kit item records for officer" });
+    }
+});
+
+// UPDATE MULTIPLE KIT ITEM RECORDS FOR ONE OFFICER
+router.put("/kit-items", async (req: Request, res: Response) => {
+    const kitItemsData = req.body; // expecting array of kit item records
+    if(!Array.isArray(kitItemsData) || kitItemsData.length === 0) {
+        return res.status(400).json({ error: "Invalid or empty kit items array" });
+    }
+    try {
+        const batch = firestore.batch();
+        kitItemsData.forEach((kitItemData : any) => {
+            const kitItemRef = firestore.collection("kitItems").doc(kitItemData.id);
+            // remove id from kitItemData before updating
+            const payload = {
+                item: kitItemData.item,
+                quantity: kitItemData.quantity,
+                issuedDate: kitItemData.issuedDate,
+                dueDate: kitItemData.dueDate
+            }
+            batch.update(kitItemRef, payload);
+        });
+        await batch.commit();
+        res.status(200).json({ message: "Kit item records updated successfully" });
+    } catch (error) {
+        console.error("Error updating kit item records for officer:", error);
+        res.status(500).json({ error: "Failed to update kit item records for officer" });
+    }
+});
+
+// DELETE KIT ITEM BY ID
+router.delete("/kit-item/:kitItemId", async (req: Request, res: Response) => {
+    const { kitItemId } = req.params;
+    if(!kitItemId) {
+        return res.status(400).json({ error: "Missing kitItemId in parameter" });
+    }
+    try {
+        const kitItemRef = firestore.collection("kitItems").doc(kitItemId);
+        await kitItemRef.delete();
+        res.status(200).json({ message: "Kit item deleted successfully" });
+    } catch (error) {
+        console.error("Error deleting kit item:", error);
+        res.status(500).json({ error: "Failed to delete kit item" });
+    }
+});
+
+// ADD MULTIPLE MOVEMENT RECORDS FOR ONE OFFICER
+router.post("/officer/:officerId/movements", async (req: Request, res: Response) => {
+    const { officerId } = req.params;
+    const movementsData = req.body; // expecting array of movement records
+    if(!officerId) {
+        return res.status(400).json({ error: "Missing officerId in parameter" });
+    }
+    if (!Array.isArray(movementsData) || movementsData.length === 0) {
+        return res.status(400).json({ error: "Invalid or empty movements array" });
+    }
+    try {
+        const batch = firestore.batch();
+        movementsData.forEach((movementData : any) => {
+            const movementRef = firestore.collection("movements").doc();
+            batch.set(movementRef, {
+                officerId,
+                ...movementData
+            });
+        });
+        await batch.commit();
+        res.status(201).json({ message: "Movement records added successfully" });
+    } catch (error) {
+        console.error("Error adding movement records for officer:", error);
+        res.status(500).json({ error: "Failed to add movement records for officer" });
+    }
+});
+
+// GET MOVEMENTS BY OFFICER ID
+router.get("/officer/:officerId/movements" , async (req: Request, res: Response) => {
+    const { officerId } = req.params;
+    if(!officerId) {
+        return res.status(400).json({ error: "Missing officerId in parameter" });
+    }
+    try {
+        const movementsSnapshot = await firestore.collection("movements").where("officerId", "==", officerId).get();
+        if(movementsSnapshot.empty) {
+            return res.status(200).json([]);
+        }
+        const movements = movementsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        res.status(200).json(movements);
+    } catch (error) {
+        console.error("Error fetching movements for officer:", error);
+        res.status(500).json({ error: "Failed to fetch movements for officer" });
+    }
+});
+
+// DELETE MOVEMENT BY ID
+router.delete("/movement/:movementId", async (req: Request, res: Response) => {
+    const { movementId } = req.params;
+    if(!movementId) {
+        return res.status(400).json({ error: "Missing movementId in parameter" });
+    }
+    try {
+        const movementRef = firestore.collection("movements").doc(movementId);
+        await movementRef.delete();
+        res.status(200).json({ message: "Movement deleted successfully" });
+    } catch (error) {
+        console.error("Error deleting movement:", error);
+        res.status(500).json({ error: "Failed to delete movement" });
+    }
+});
+
+// UPDATE MOVEMENT RECORDS
+router.put("/movements", async (req: Request, res: Response) => {
+    const movementsData = req.body; // expecting array of movement records
+    if(!Array.isArray(movementsData) || movementsData.length === 0) {
+        return res.status(400).json({ error: "Invalid or empty movements array" });
+    }
+    try {
+        const batch = firestore.batch();
+        movementsData.forEach((movementData : any) => {
+            const movementRef = firestore.collection("movements").doc(movementData.id);
+            // remove id from movementData before updating
+            const payload = {
+                from: movementData.from,
+                to: movementData.to,
+                arrival: movementData.arrival,
+                date: movementData.date,
+                draft: movementData.draft
+            }
+            batch.update(movementRef, payload);
+        });
+        await batch.commit();
+        res.status(200).json({ message: "Movement records updated successfully" });
+    } catch (error) {
+        console.error("Error updating movement records for officer:", error);
+        res.status(500).json({ error: "Failed to update movement records for officer" });
+    }
+});
+
 // GET MEDICAL RECORDS BY OFFICER ID
 router.get("/officer/:officerId/medical" , async (req: Request, res: Response) => {
     const { officerId } = req.params;
