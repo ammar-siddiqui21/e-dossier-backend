@@ -16,7 +16,7 @@ class Utils {
         let classAverageMarks: number = 0;
         let numberOfStudents: number = 0;
         const snapshot = await enrollmentCollection.where("classId", "==", classId).get();
-        if (snapshot.empty) {
+        if (snapshot.size === 0) {
             return 0;
         }
         numberOfStudents = Number(snapshot.size);
@@ -24,9 +24,6 @@ class Utils {
             let studentTotalMarks: number = 0;
             const officerId = doc.data().officerId;
             const marksSnapshot = await firestore.collection("marks").where("officerId", "==", officerId).get();
-            if(marksSnapshot.empty) {
-                return 0;
-            }
             for(const marksDoc of marksSnapshot.docs) {
                 const { assessmentId, marks } = marksDoc.data();
                 // Get assessment details
@@ -102,8 +99,10 @@ class Utils {
             const officerDoc = await firestore.collection("officers").doc(officerId).get();
             const officerData = officerDoc.data();
             if (officerData && officerData.pet) {
-                totalPetMarks += officerData.pet.totalMarks;
-                obtainedPetMarks += officerData.pet.obtainedMarks;
+                officerData.pet.forEach((petMark: Pet) => {
+                    obtainedPetMarks += Number(petMark.obtainedMarks);
+                    totalPetMarks += Number(petMark.totalMarks);
+                })
             }
         }
         return { totalPetMarks, obtainedPetMarks };
